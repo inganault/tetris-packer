@@ -36,8 +36,14 @@ for i in itertools.count(getattr(args, 'from')):
         break
     out = output_dir / f'{i:04d}_out.npz'
     if not out.exists():
-        if i == 0:
-            run([exe, src, '-o', out])
-        else:
-            ref = output_dir / f'{i-1:04d}_out.npz'
-            run([exe, src, ref, '-o', out])
+        try:
+            if i == 0:
+                run([exe, src, '-o', out])
+            else:
+                ref = output_dir / f'{i-1:04d}_out.npz'
+                run([exe, src, ref, '-o', out])
+        except KeyboardInterrupt:
+            if out.exists():
+                out.unlink()
+            print(f"Stopped at frame #{i:04}")
+            break
