@@ -8,6 +8,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use ndarray::prelude::*;
 use ndarray_npy::{NpzReader, NpzWriter};
+use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
 
 mod ga;
 mod img;
@@ -59,6 +60,7 @@ fn main() -> Result<()> {
             .map(|m| m.slice(s![seg.y..(seg.y + h), seg.x..(seg.x + w),]));
 
         let goal = map.iter().map(|x| *x as i32).sum::<i32>() / 4 * 4;
+        let mut candidate = vec![];
         let mut last_ga = None;
         let mut success = false;
         let start = Instant::now();
@@ -83,8 +85,11 @@ fn main() -> Result<()> {
             ) {
                 Ok(ga) => {
                     success = true;
+                    candidate.push(ga.candidate[0].clone());
                     last_ga = Some(ga);
-                    break;
+                    if candidate.len() >= 3 || ref_map.is_none() {
+                        break;
+                    }
                 }
                 Err(ga) => {
                     last_ga = Some(ga);
@@ -95,19 +100,18 @@ fn main() -> Result<()> {
         let ga = last_ga.as_ref().unwrap();
         if success {
             println!("generation: {}", ga.generation);
-            for row in img::dump(&ga.cfg.map, &ga.candidate[0].data) {
+            for row in img::dump(&ga.cfg.map, &candidate[0].data) {
                 println!("|{}|", row);
             }
-            println!(
-                "  {:?} = {}",
-                ga.candidate[0].raw_score, ga.candidate[0].score
-            );
+            println!("  {:?} = {}", candidate[0].raw_score, ga.candidate[0].score);
         } else {
             println!("{:?}", ga);
             println!("Failed");
+            // add failed candidate for base line
+            candidate.push(ga.candidate[0].clone());
 
             // try hard mode
-            for seed in 0..20 {
+            for seed in 0..5 {
                 // transfer ref
                 let ref_map = ref_map.map(|ref_map| {
                     for seed2 in 0..10 {
@@ -128,19 +132,38 @@ fn main() -> Result<()> {
                     true,
                 ) {
                     Ok(ga) => {
-                        last_ga = Some(ga);
+                        candidate.push(ga.candidate[0].clone());
                         break;
                     }
                     Err(ga) => {
-                        last_ga = Some(ga);
+                        candidate.push(ga.candidate[0].clone());
                     }
                 }
             }
         }
-        let ga = last_ga.as_ref().unwrap();
+
+        // rank candidate by similarity
+        candidate.par_iter_mut().for_each(|c| {
+            let similarity = ref_map
+                .map(|ref_map| {
+                    c.data
+                        .iter()
+                        .zip(ref_map)
+                        .map(|(a, b)| (*a != 0 && a == b) as i32)
+                        .sum()
+                })
+                .unwrap_or(0i32);
+            c.score = if let img::EvalResult::Valid { filled, .. } = c.raw_score {
+                filled * 10 + similarity
+            } else {
+                0
+            };
+        });
+        candidate.sort_by_key(|c| -c.score);
+
         composite
             .slice_mut(s![seg.y..(seg.y + h), seg.x..(seg.x + w),])
-            .zip_mut_with(&ga.candidate[0].data, |comp, diff| {
+            .zip_mut_with(&candidate[0].data, |comp, diff| {
                 *comp += diff;
             });
     }
