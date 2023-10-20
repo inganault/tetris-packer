@@ -6,60 +6,61 @@ import numpy as np
 import itertools
 from pathlib import Path
 import argparse
+import sys
 
 TETROMINO = [
     # pairs of (y offset, x offset)
     [],  # 0 is reserved
-    [  # 1 = O 
+    [  # 1 = O
         (0, 0), (0, 1), (1, 0), (1, 1),
     ],
-    [  # 2 = I 
+    [  # 2 = I
         (0, 0), (0, 1), (0, 2), (0, 3),
     ],
-    [  # 3 = I 
+    [  # 3 = I
         (0, 0), (1, 0), (2, 0), (3, 0),
     ],
 
-    [  # 4 = J 
+    [  # 4 = J
         (0, 1), (1, 1), (2, 1), (2, 0),
     ],
-    [  # 5 = J 
+    [  # 5 = J
         (0, 0), (0, 1), (0, 2), (1, 2),
     ],
-    [  # 6 = J 
+    [  # 6 = J
         (0, 0), (0, 1), (1, 0), (2, 0),
     ],
-    [  # 7 = J 
+    [  # 7 = J
         (0, 0), (1, 0), (1, 1), (1, 2),
     ],
 
-    [  # 8 = L 
+    [  # 8 = L
         (0, 0), (0, 1), (1, 1), (2, 1),
     ],
-    [  # 9 = L 
+    [  # 9 = L
         (1, 0), (1, 1), (1, 2), (0, 2),
     ],
-    [  # 10 = L 
+    [  # 10 = L
         (0, 0), (1, 0), (2, 0), (2, 1),
     ],
-    [  # 11 = L 
+    [  # 11 = L
         (0, 0), (0, 1), (0, 2), (1, 0),
     ],
 
-    [  # 12 = S 
+    [  # 12 = S
         (0, 1), (0, 2), (1, 0), (1, 1),
     ],
-    [  # 13 = S 
+    [  # 13 = S
         (0, 0), (1, 0), (1, 1), (2, 1),
     ],
-    [  # 14 = Z 
+    [  # 14 = Z
         (0, 0), (0, 1), (1, 1), (1, 2),
     ],
-    [  # 15 = Z 
+    [  # 15 = Z
         (0, 1), (1, 1), (1, 0), (2, 0),
     ],
 
-    [  # 16 = T 
+    [  # 16 = T
         (0, 0), (0, 1), (0, 2), (1, 1),
     ],
     [  # 17 = T
@@ -73,8 +74,13 @@ TETROMINO = [
     ],
 ]
 
-def hsv2bgr(h, s, v): return tuple(
-    255 * i for i in colorsys.hsv_to_rgb(h / 360, s, v)[::-1])
+def status(*args,**kwargs):
+    return print(*args, **kwargs, file=sys.stderr)
+
+def hsv2bgr(h, s, v):
+    return tuple(
+        255 * i for i in colorsys.hsv_to_rgb(h / 360, s, v)[::-1]
+        )
 
 TETROMINO_COLOR = [
     # rgb
@@ -102,14 +108,14 @@ TETROMINO_COLOR = [
 STROKE_COLOR = (80, 80, 80)
 
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument('dir', help="working directory")
-parser.add_argument('-f','--from', type=int, default=0, help="start from frame #n")
-parser.add_argument('-s','--scale', type=int, default=24, help="block size in pixel")
-parser.add_argument('-w','--width', type=int, default=2, help="stroke width in pixel")
-parser.add_argument('-u','--unfilled', action='store_true', help="paint unfilled blocks")
-parser.add_argument('-i','--info', action='store_true', help="show frame count")
+parser.add_argument('-f', '--from', type=int, default=0, help="start from frame #n")
+parser.add_argument('-s', '--scale', type=int, default=24, help="block size in pixel")
+parser.add_argument('-w', '--width', type=int, default=2, help="stroke width in pixel")
+parser.add_argument('-u', '--unfilled', action='store_true', help="paint unfilled blocks")
+parser.add_argument('-i', '--info', action='store_true', help="show frame count")
+parser.add_argument('-o', '--output', action='store_true', help="output rawvideo to stdout")
 args = parser.parse_args()
 
 output_dir = Path(args.dir)
@@ -117,18 +123,20 @@ upscale = args.scale
 swidth = args.width
 single_step_mode = False
 paint_unfilled = args.unfilled
+resolution_displayed = False
+
 
 for count in itertools.count(getattr(args, 'from')):
     src = output_dir / f'{count:04d}.npz'
     if not src.exists():
         break
     if args.info:
-        print(f"Frame #{count}")
+        status(f"Frame #{count}")
     if paint_unfilled:
         try:
             map = np.load(src)
         except FileNotFoundError:
-            print(f'file {src} missing')
+            status(f'file {src} missing')
             continue
         map = map['map']
 
@@ -136,7 +144,7 @@ for count in itertools.count(getattr(args, 'from')):
     try:
         piece = np.load(src)
     except FileNotFoundError:
-        print(f'file {src} missing')
+        status(f'file {src} missing')
         continue
     piece = piece['piece']
     h, w = piece.shape
@@ -147,7 +155,7 @@ for count in itertools.count(getattr(args, 'from')):
             for x in range(map.shape[1]):
                 if map[y, x]:
                     frame[y * upscale:(y + 1) * upscale,
-                        x * upscale:(x + 1) * upscale, :] = TETROMINO_COLOR[0]
+                          x * upscale:(x + 1) * upscale, :] = TETROMINO_COLOR[0]
 
     for y in range(piece.shape[0]):
         for x in range(piece.shape[1]):
@@ -180,9 +188,19 @@ for count in itertools.count(getattr(args, 'from')):
                       x1: x1 + swidth, :] = color if (dy + 1, dx - 1) in blocks and (dy + 1, dx) in blocks and (dy, dx - 1) in blocks else STROKE_COLOR
                 frame[y2 - swidth: y2,
                       x2 - swidth:x2, :] = color if (dy + 1, dx + 1) in blocks and (dy + 1, dx) in blocks and (dy, dx + 1) in blocks else STROKE_COLOR
-    
+
     if args.info:
-        frame = cv2.putText(frame, f'{count}', (30,100), cv2.FONT_HERSHEY_SIMPLEX, 3, (127,127,127), 10)
+        frame = cv2.putText(
+            frame, f'{count}', (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, (127, 127, 127), 10)
+
+    if args.output:
+        if not resolution_displayed:
+            resolution_displayed = True
+            status('## Output option:')
+            status(f'## ffmpeg -video_size {frame.shape[1]}x{frame.shape[0]} -pix_fmt bgr24 -f rawvideo -i - out.mp4')
+        sys.stdout.buffer.write(memoryview(frame))
+        sys.stdout.buffer.flush()
+        continue
 
     cv2.imshow('frame', frame)
     if single_step_mode:
