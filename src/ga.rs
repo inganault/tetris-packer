@@ -215,20 +215,23 @@ pub fn score_grow(cfg: &Config, raw: &img::EvalResult) -> i32 {
         return -101;
     }
 
-    if cfg.map_size % 4 == 0 {
-        if fragment_non4 > 0 {
-            return -102;
-        }
-    } else {
-        if fragment_non4 > 1 {
-            return -102;
-        }
-    }
-
     if cfg.score_phase == 0 {
+        if cfg.map_size % 4 == 0 {
+            if fragment_non4 > 0 {
+                return -102;
+            }
+        } else {
+            if fragment_non4 > 1 {
+                return -102;
+            }
+        }
         return max(0, filled * 4 - surface * 2 + 10 - 10 * fragment - 10 * hole);
     } else {
-        return max(0, filled * 4 - surface * 2 - 10 * hole);
+        // try hard mode
+        return max(
+            0,
+            filled * 4 - surface * 2 - fragment - fragment_non4 - 10 * hole,
+        );
     }
 }
 

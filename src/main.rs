@@ -65,7 +65,7 @@ fn main() -> Result<()> {
         for seed in 0..20 {
             // transfer ref
             let ref_map = ref_map.map(|ref_map| {
-                for seed2 in 0..20 {
+                for seed2 in 0..10 {
                     match trim(map.view(), ref_map.view(), seed + 1000 * seed2) {
                         Ok(out) => return out,
                         Err(_) => continue,
@@ -110,7 +110,7 @@ fn main() -> Result<()> {
             for seed in 0..20 {
                 // transfer ref
                 let ref_map = ref_map.map(|ref_map| {
-                    for seed2 in 0..20 {
+                    for seed2 in 0..10 {
                         match trim(map.view(), ref_map.view(), seed + 1000 * seed2) {
                             Ok(out) => return out,
                             Err(_) => continue,
@@ -235,7 +235,7 @@ fn grow(
     ref_map: Option<ArrayView2<u8>>,
     seed: u64,
     goal: i32,
-    phase: bool,
+    try_hard: bool,
 ) -> Result<ga::GA, ga::GA> {
     let mut ga = ga::GA::new(
         ga::Config {
@@ -265,18 +265,23 @@ fn grow(
         {
             return Ok(ga);
         }
-        if ga.generation == 100000 && phase {
-            ga.cfg.score_phase = 1;
-            ga.rescore();
-        }
-        if ga.generation >= 110000 {
+        if ga.generation >= 100000 {
             return Err(ga);
         }
         let score = ga.candidate[0].score;
         if ga.generation % 1000 == 0 {
             if last_score.iter().all(|v| *v == score) {
                 println!("seed: {} stuck @ gen: {}", seed, ga.generation);
-                return Err(ga);
+                if try_hard {
+                    if ga.cfg.score_phase == 1 {
+                        return Err(ga);
+                    }
+                    ga.cfg.score_phase = 1;
+                    ga.rescore();
+                    continue;
+                } else {
+                    return Err(ga);
+                }
             }
             last_score.pop_front();
             last_score.push_back(score);
